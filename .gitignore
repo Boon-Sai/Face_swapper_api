@@ -1,0 +1,12 @@
+venv
+weights
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.db
+*.sqlite3   
+Artifacts/
+logs/
+uploads/

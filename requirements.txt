@@ -1,0 +1,11 @@
+insightface
+ipykernel
+opencv-python
+matplotlib
+numpy
+onnxruntime
+fastapi
+uvicorn
+python-multipart
+
+opencv-python
