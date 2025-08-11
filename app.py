@@ -1,21 +1,18 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from src.pipeline.faceswap_pipeline import initiate_face_swapper
 from src.logger import logging
-from src.exceptions import CustomException
 import os
-import sys
-from typing import List
+import base64
 
 app = FastAPI()
 
-# Global variable to store the latest upload data (for demonstration; use a proper session store in production)
+# Global variable to store the latest upload data
 latest_session_data = {}
 
 @app.post("/upload-images/")
 async def upload_images(multi_face_image: UploadFile = File(...), single_face_image: UploadFile = File(...)):
     try:
-        # Declare global variable at the start of the function
         global latest_session_data
         
         multi_face_path = os.path.join("artifacts", multi_face_image.filename)
@@ -31,7 +28,6 @@ async def upload_images(multi_face_image: UploadFile = File(...), single_face_im
         face_swapper = initiate_face_swapper(multi_face_path, single_face_path, selected_indices=None)
         
         if not face_swapper.detected_face_paths:
-            # Update session data
             latest_session_data = {
                 "multi_face_path": multi_face_path,
                 "single_face_path": single_face_path,
@@ -49,7 +45,6 @@ async def upload_images(multi_face_image: UploadFile = File(...), single_face_im
             for i, (base64_face, path) in enumerate(zip(face_swapper.base64_faces, face_swapper.detected_face_paths))
         ]
         
-        # Update session data
         latest_session_data = {
             "multi_face_path": multi_face_path,
             "single_face_path": single_face_path,
@@ -69,7 +64,6 @@ async def upload_images(multi_face_image: UploadFile = File(...), single_face_im
 @app.post("/swap-faces/")
 async def swap_faces(indices: str):
     try:
-        # Retrieve latest session data
         if not latest_session_data:
             logging.error("No session data available. Please upload images first.")
             raise HTTPException(status_code=404, detail="No session data available. Please upload images first.")
@@ -78,15 +72,13 @@ async def swap_faces(indices: str):
         single_face_path = latest_session_data["single_face_path"]
         detected_faces = latest_session_data["detected_faces"]
         
-        # Validate indices
         if indices == "-1":
-            selected_indices = None  # Swap all faces
+            selected_indices = None
         else:
             try:
                 selected_indices = [int(i) - 1 for i in indices.split(",") if i.strip().isdigit()]
                 if not selected_indices:
                     raise ValueError("Invalid indices provided")
-                # Validate indices against detected faces
                 max_index = len(detected_faces)
                 if any(i < 0 or i >= max_index for i in selected_indices):
                     raise ValueError(f"Indices out of range. Valid range: 1 to {max_index}")
@@ -101,22 +93,12 @@ async def swap_faces(indices: str):
             logging.error(f"Face swap failed. Result image not found at: {artifact.result_image_path}")
             raise HTTPException(status_code=500, detail="Face swap failed. Result image not generated.")
 
-        # Return the face-swapped image as a direct download
-        return FileResponse(
-            path=artifact.result_image_path,
-            filename=os.path.basename(artifact.result_image_path),
-            media_type="image/jpeg"
-        )
+        # Convert result image to base64 with tag
+        with open(artifact.result_image_path, "rb") as img_file:
+            img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
+        
+        return JSONResponse(content={"base64": f"data:image/jpeg;base64,{img_base64}"})
+    
     except Exception as e:
         logging.error(f"Error in face swap endpoint: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
-
-@app.get("/download-file/{file_path:path}")
-async def download_file(file_path: str):
-    if os.path.exists(file_path):
-        return FileResponse(
-            path=file_path,
-            filename=os.path.basename(file_path),
-            media_type="image/jpeg"
-        )
-    raise HTTPException(status_code=404, detail="File not found")
